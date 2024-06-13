@@ -16,7 +16,7 @@
 * Users of this class can expect to gain a solid understanding of SOQL in Apex and
 * be prepared to handle data retrieval tasks in Salesforce development.
 * 
-* @author Your Name
+* @author Summer Perkins
 */
 
 public with sharing class SOQL {
@@ -28,9 +28,10 @@ public with sharing class SOQL {
      * @return List of all leads with Id, LastName, Company, Phone, Email
      * Update the corresponding test class and testGetAllLeads method to cover this method
      */
-    //[public | private ] [static] data_type method_name (input parameters) {
-    //  The body of the method
-    //}
+    public static List<Lead> getAllLeads() {
+        List<Lead> allLeads = [SELECT Id, LastName, Company, Phone, Email FROM Lead];
+        return allLeads;
+    }
 
     /**
      * Question 2
@@ -39,9 +40,9 @@ public with sharing class SOQL {
      * @return A list of Contact records.
      * Update the corresponding test class and testGetContactsByFirstName method to cover this method
      */
-    //[public | private ] [static] data_type method_name (input parameters) {
-    //  The body of the method
-    //}
+    public static List<Contact> getContactsByFirstName() {
+        return [SELECT Id, Name, Email FROM Contact WHERE FirstName = 'John'];
+    }
 
     /**
      * Question 3
@@ -50,9 +51,15 @@ public with sharing class SOQL {
      * @return A list of Contact Ids.
      * Update the corresponding test class and testGetContactIdsByLastName method to cover this method
      */
-    //[public | private ] [static] data_type method_name (input parameters) {
-    //  The body of the method
-    //}
+    public static List<Id> getContactIds() {
+        List<Contact> contacts = [SELECT Id FROM Contact WHERE LastName IN ('Smith', 'Jones')];
+        List<Id> contactIds = new List<Id>();
+        for (Contact contact : contacts) {
+            contactIds.add(contact.Id);
+        }
+        return contactIds;
+    }
+
 
     /**
      * Question 4
@@ -63,9 +70,18 @@ public with sharing class SOQL {
      * @return A list of Opportunities with important opportunities fields
      * Update the corresponding test class and testGetClosedWonOpportunityCountByAccount method to cover this method
      */
-    //[public | private ] [static] data_type method_name (input parameters) {
-    //  The body of the method
-    //}
+    public static List<Opportunity> getClosedWonOpps(Id accountId) {
+        // Perform a SOQL query to get the Closed Won Opportunities for the provided Account Id
+        List<Opportunity> opportunities = [
+            SELECT Id, Name, StageName, CloseDate, Amount
+            FROM Opportunity
+            WHERE Id = :accountId
+            AND StageName = 'Closed Won'
+        ];
+        
+        // Return the list of Opportunities
+        return opportunities;
+    }
 
     /**
      * Question 5
@@ -74,9 +90,9 @@ public with sharing class SOQL {
      * @return The Integer count of Account records.
      * Update the corresponding test class and testGetAccountCount method to cover this method
      */
-    //[public | private ] [static] data_type method_name (input parameters) {
-    //  The body of the method
-    //}
+    public static Integer getAccountCount()  {
+        return [SELECT COUNT() FROM Account];
+    }
 
     /**
      * Question 6
