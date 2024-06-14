@@ -71,15 +71,13 @@ public with sharing class SOQL {
      * Update the corresponding test class and testGetClosedWonOpportunityCountByAccount method to cover this method
      */
     public static List<Opportunity> getClosedWonOpps(Id accountId) {
-        // Perform a SOQL query to get the Closed Won Opportunities for the provided Account Id
         List<Opportunity> opportunities = [
-            SELECT Id, Name, StageName, CloseDate, Amount
+            SELECT AccountId, Name, StageName, CloseDate, Amount
             FROM Opportunity
-            WHERE Id = :accountId
+            WHERE AccountId = :accountId
             AND StageName = 'Closed Won'
         ];
         
-        // Return the list of Opportunities
         return opportunities;
     }
 
