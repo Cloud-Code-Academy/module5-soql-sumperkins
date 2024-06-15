@@ -157,9 +157,10 @@ public with sharing class SOQL {
      * Update the corresponding test class and testGetLeadsBySourceOrTitle method to cover this method
      */
     public static List<Lead> getLeadsBySourceOrTitle(String leadSource, String keyword) {
-        List<Lead> leads = [SELECT Id, LastName, Company, Phone, Email, Title, LeadSource 
+        String keywordLike = '%' + keyword + '%';
+        List<Lead> leads = [SELECT LastName, Company, Phone, Email, Title, LeadSource 
                             FROM Lead 
-                            WHERE (LeadSource = :leadSource OR Title LIKE '%keyword')];
+                            WHERE (LeadSource = :leadSource OR Title LIKE :keywordLike)];
 
         return leads;
     }
@@ -302,12 +303,23 @@ public with sharing class SOQL {
      * @return List of contacts with the same Mailing State as the Account Billing State
      */
     public static List<Contact> getAccountsWithContactsByState(Id accountId) {
-        Account acc = [SELECT Id, BillingState FROM Account WHERE Id = :accountId]; // Query the Account
-
-        String billingState = acc.BillingState; // Store the Account's BillingState
-
-        List<Contact> contacts = [SELECT Id, FirstName, LastName, MailingState FROM Contact WHERE AccountId = :accountId AND MailingState = :billingState]; // Query the Contacts
-        return contacts; // Replace null with the variable you used to store the result
+        List<String> billingStates = new List<String>();
+        for (Account acc : [SELECT BillingState FROM Account WHERE Id = :accountId]) {
+            billingStates.add(acc.BillingState);
+        }
+    
+        List<Contact> allContacts = [SELECT Id, FirstName, LastName, MailingState 
+                                     FROM Contact 
+                                     WHERE AccountId = :accountId];
+    
+        List<Contact> contactsByState = new List<Contact>();
+        for (Contact con : allContacts) {
+            if (billingStates.contains(con.MailingState)) {
+                contactsByState.add(con);
+            }
+        }
+    
+        return contactsByState;
     }
 
     /**
@@ -319,29 +331,35 @@ public with sharing class SOQL {
      * @return A list of Accounts with matching email domains.
      */
     public static List<Account> findAccountsByLeadEmailDomains(Set<Id> leadIds) {
-        List<Lead> leads = [SELECT Id, Email FROM Lead WHERE Id IN :leadIds]; // Query the Leads
+        List<Lead> leads = [SELECT Id, Email FROM Lead WHERE Id IN :leadIds]; 
 
-        Set<String> emailDomain = new Set<String>(); // Create a set of email domains from the Leads
+        Set<String> emailDomains = new Set<String>(); 
         for (Lead lead : leads) {
             if (lead.Email != null) {
                 String email = lead.Email.toLowerCase();
                 Integer atIndex = email.indexOf('@');
                 if (atIndex != -1) {
-                    String domain = email.substring(atIndex + 1);
-                    emailDomain.add(domain);
+                String domain = email.substring(atIndex + 1);
+                emailDomains.add(domain);
                 }
             }
         }
 
         List<Account> matchingAccounts = new List<Account>();
-        if (!emailDomain.isEmpty()) {
+        if (!emailDomains.isEmpty()) {
+            Set<String> websitePatterns = new Set<String>();
+            for (String domain : emailDomains) {
+                websitePatterns.add('%.' + domain);
+                websitePatterns.add('%' + domain);
+            }
+
             matchingAccounts = [SELECT Id, Name, Website 
                                 FROM Account 
                                 WHERE Website != null 
-                                AND (Website LIKE 'www.%' OR Website IN :emailDomain)];
+                                AND (Website LIKE :websitePatterns)];
         }
-        
-        return matchingAccounts; // Replace null with the variable you used to store the result
+
+        return matchingAccounts;
     }
 
     /**
@@ -391,35 +409,37 @@ public with sharing class SOQL {
      * Example: setPrimaryContact() should set the 'Primary_Contact__c' field for every Opportunity in the org
      */
     public static void setPrimaryContact() {
-        List<Opportunity> opportunities = getOpportunityDetailsForClosedWon(); // Fetch Closed Won Opportunities
-    
-        Set<Id> accountIds = new Set<Id>(); // Collect Account Ids from Opportunities
-        for (Opportunity opp : opportunities) {
+        //Use the getOpportunityDetailsForClosedWon() method to get the Opportunities
+        List<Opportunity> closedWonOpps = getOpportunityDetailsForClosedWon();
+        
+        // Create a set of Account Ids from the Opportunities
+        Set<Id> accountIds = new Set<Id>();
+        for (Opportunity opp : closedWonOpps) {
             accountIds.add(opp.AccountId);
         }
-    
-        // Query Contacts related to the Accounts
-        Map<Id, Contact> accountToPrimaryContactMap = new Map<Id, Contact>();
-        for (Contact con : [SELECT Id, AccountId FROM Contact WHERE AccountId IN :accountIds]) {
-            // Choose the first Contact for each Account as the primary Contact
-            if (!accountToPrimaryContactMap.containsKey(con.AccountId)) {
-                accountToPrimaryContactMap.put(con.AccountId, con);
+        // Query the Contacts
+        List<Contact> contacts = [SELECT Id, FirstName, LastName, AccountId FROM Contact WHERE AccountId IN :accountIds];
+        // Create a map of Account Ids to the first Contact
+        Map<Id, Id> accountToContactMap = new Map<Id, Id>();
+        // Loop through each Contact and add the Account Id and Contact to the map
+        for (Contact contact : contacts) {
+            // If the Account Id is not already in the map, add it with the Contact Id
+            if (!accountToContactMap.containsKey(contact.AccountId)) {
+                accountToContactMap.put(contact.AccountId, contact.Id);
             }
         }
-    
-        // Prepare Opportunities to update
-        List<Opportunity> opportunitiesToUpdate = new List<Opportunity>();
-        for (Opportunity opp : opportunities) {
-            if (accountToPrimaryContactMap.containsKey(opp.AccountId)) {
-                Contact primaryContact = accountToPrimaryContactMap.get(opp.AccountId);
-                opp.Primary_Contact__c = primaryContact.Id; // Assign Contact Id to the Lookup field
-                opportunitiesToUpdate.add(opp);
+        List<Opportunity> oppsToUpdate = new List<Opportunity>();
+        
+        // Loop through each Opportunity        
+        for (Opportunity opp : closedWonOpps) {
+            if (accountToContactMap.containsKey(opp.AccountId)) {
+                opp.Primary_Contact__c = accountToContactMap.get(opp.AccountId);
+                oppsToUpdate.add(opp);
             }
         }
-    
-        // Update Opportunities
-        if (!opportunitiesToUpdate.isEmpty()) {
-            update opportunitiesToUpdate;
+        // Update the Opportunities
+        if (!oppsToUpdate.isEmpty()) {
+            update oppsToUpdate;
         }
     }
 }
