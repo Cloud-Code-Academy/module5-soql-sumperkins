@@ -303,21 +303,21 @@ public with sharing class SOQL {
      * @return List of contacts with the same Mailing State as the Account Billing State
      */
     public static List<Contact> getAccountsWithContactsByState(Id accountId) {
-        List<String> billingStates = new List<String>();
-        for (Account acc : [SELECT BillingState FROM Account WHERE Id = :accountId]) {
-            billingStates.add(acc.BillingState);
+        // Retrieve the Account with the given ID
+        Account acc = [SELECT Id, BillingState FROM Account WHERE Id = :accountId LIMIT 1];
+    
+        // If no account is found, return an empty list
+        if (acc == null) {
+            return new List<Contact>();
         }
     
-        List<Contact> allContacts = [SELECT Id, FirstName, LastName, MailingState 
-                                     FROM Contact 
-                                     WHERE AccountId = :accountId];
+        // Store the Account's BillingState
+        String billingState = acc.BillingState;
     
-        List<Contact> contactsByState = new List<Contact>();
-        for (Contact con : allContacts) {
-            if (billingStates.contains(con.MailingState)) {
-                contactsByState.add(con);
-            }
-        }
+        // Query Contacts where MailingState matches the Account's BillingState
+        List<Contact> contactsByState = [SELECT Id, FirstName, LastName, MailingState 
+                                         FROM Contact 
+                                         WHERE AccountId = :accountId AND MailingState = :billingState];
     
         return contactsByState;
     }
@@ -409,37 +409,43 @@ public with sharing class SOQL {
      * Example: setPrimaryContact() should set the 'Primary_Contact__c' field for every Opportunity in the org
      */
     public static void setPrimaryContact() {
-        //Use the getOpportunityDetailsForClosedWon() method to get the Opportunities
+        // Step 1: Use the getOpportunityDetailsForClosedWon() method to get the Opportunities
         List<Opportunity> closedWonOpps = getOpportunityDetailsForClosedWon();
-        
-        // Create a set of Account Ids from the Opportunities
-        Set<Id> accountIds = new Set<Id>();
+
+        // Step 2: Create a map to store the primary contact for each Account
+        Map<Id, Id> accountToFirstContactMap = new Map<Id, Id>();
+    
+        // Step 3: Loop through closedWonOpps to collect Account IDs
         for (Opportunity opp : closedWonOpps) {
-            accountIds.add(opp.AccountId);
-        }
-        // Query the Contacts
-        List<Contact> contacts = [SELECT Id, FirstName, LastName, AccountId FROM Contact WHERE AccountId IN :accountIds];
-        // Create a map of Account Ids to the first Contact
-        Map<Id, Id> accountToContactMap = new Map<Id, Id>();
-        // Loop through each Contact and add the Account Id and Contact to the map
-        for (Contact contact : contacts) {
-            // If the Account Id is not already in the map, add it with the Contact Id
-            if (!accountToContactMap.containsKey(contact.AccountId)) {
-                accountToContactMap.put(contact.AccountId, contact.Id);
+            if (opp.AccountId != null && !accountToFirstContactMap.containsKey(opp.AccountId)) {
+                accountToFirstContactMap.put(opp.AccountId, null); // Initialize with null
             }
         }
-        List<Opportunity> oppsToUpdate = new List<Opportunity>();
-        
-        // Loop through each Opportunity        
-        for (Opportunity opp : closedWonOpps) {
-            if (accountToContactMap.containsKey(opp.AccountId)) {
-                opp.Primary_Contact__c = accountToContactMap.get(opp.AccountId);
-                oppsToUpdate.add(opp);
+    
+            // Step 4: Query Contacts for each Account and populate accountToFirstContactMap with the logically first ContactId
+        for (Contact contact : [
+            SELECT Id, AccountId 
+            FROM Contact 
+            WHERE AccountId IN :accountToFirstContactMap.keySet() 
+            ORDER BY LastName ASC, FirstName ASC
+        ]) {
+            if (accountToFirstContactMap.get(contact.AccountId) == null) {
+                accountToFirstContactMap.put(contact.AccountId, contact.Id); // Set the first ContactId
             }
         }
-        // Update the Opportunities
-        if (!oppsToUpdate.isEmpty()) {
-            update oppsToUpdate;
+    
+            // Step 5: Loop through the Closed Won Opportunities and prepare the list for update
+        List<Opportunity> opportunitiesToUpdate = new List<Opportunity>();
+        for (Opportunity opp : closedWonOpps) {
+            if (accountToFirstContactMap.containsKey(opp.AccountId)) {
+                opp.Primary_Contact__c = accountToFirstContactMap.get(opp.AccountId);
+                opportunitiesToUpdate.add(opp);
+            }
+        }
+    
+            // Step 6: Perform DML update to save changes to opportunitiesToUpdate
+        if (!opportunitiesToUpdate.isEmpty()) {
+            update opportunitiesToUpdate;
         }
     }
 }
